@@ -1,6 +1,14 @@
 import streamlit as st
 from PyPDF2 import PdfReader
-import random
+import re
+from collections import Counter
+
+# ---------------------------
+# PAGE CONFIG
+# ---------------------------
+st.set_page_config(page_title="Smart Study Companion PRO", layout="wide")
+
+st.title("🧠 Smart Study Companion PRO")
 
 # ---------------------------
 # PDF TEXT EXTRACTION
@@ -9,62 +17,75 @@ def extract_text(pdf_file):
     reader = PdfReader(pdf_file)
     text = ""
     for page in reader.pages:
-        text += page.extract_text()
+        if page.extract_text():
+            text += page.extract_text()
     return text.lower()
 
 # ---------------------------
-# SIMPLE CHUNK SEARCH (basic fix for your issue)
+# CLEAN WORDS (important improvement)
 # ---------------------------
-def find_relevant_chunk(text, query):
-    sentences = text.split(".")
-    relevant = [s for s in sentences if query.lower() in s]
-    return " ".join(relevant[:5]) if relevant else text[:500]
+def get_keywords(text):
+    words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
+    stop_words = {
+        "this","that","with","from","have","will","your","they","what",
+        "which","when","were","been","being","there","their","about",
+        "would","could","should","into","over","after","before"
+    }
+
+    filtered = [w for w in words if w not in stop_words]
+    freq = Counter(filtered)
+
+    return [w for w, _ in freq.most_common(15)]
 
 # ---------------------------
-# QUESTION GENERATOR
+# SMART QUESTION GENERATOR
 # ---------------------------
 def generate_questions(text):
-    topics = ["variable", "loop", "function", "python", "data type"]
+    keywords = get_keywords(text)
 
     short_q = []
     long_q = []
 
-    for t in topics:
-        if t in text:
-            short_q.append(f"What is {t}?")
-            short_q.append(f"Name features of {t}.")
+    for k in keywords:
+        short_q.append(f"What is {k}?")
+        short_q.append(f"Write key points about {k}.")
 
-            long_q.append(f"Explain {t} in detail with example.")
-            long_q.append(f"Write a note on {t} in Python.")
+        long_q.append(f"Explain {k} in detail with examples.")
+        long_q.append(f"Discuss the concept of {k} with real-life applications.")
 
-    return short_q, long_q
+    return short_q[:10], long_q[:10]
 
 # ---------------------------
 # FLASHCARDS
 # ---------------------------
 def generate_flashcards(text):
+    keywords = get_keywords(text)
     cards = []
-    if "variable" in text:
-        cards.append(("What is a variable?", "A container to store data values"))
-    if "loop" in text:
-        cards.append(("What is a loop?", "Used for repeating tasks"))
-    if "function" in text:
-        cards.append(("What is a function?", "Reusable block of code"))
+
+    for k in keywords[:8]:
+        cards.append((f"What is {k}?", f"{k} is an important concept from your notes."))
+
     return cards
 
 # ---------------------------
-# UI
+# SIMPLE Q&A SEARCH
 # ---------------------------
-st.title("🧠 Smart Study Companion PRO")
+def find_relevant_chunk(text, query):
+    sentences = text.split(".")
+    relevant = [s for s in sentences if query.lower() in s]
+    return " ".join(relevant[:5]) if relevant else "No exact match found in notes."
 
-pdf = st.file_uploader("📄 Upload your notes (PDF)")
+# ---------------------------
+# UPLOAD PDF
+# ---------------------------
+pdf = st.file_uploader("📄 Upload any subject PDF")
 
 if pdf:
     text = extract_text(pdf)
-    st.success("File processed successfully!")
+    st.success("✅ PDF processed successfully!")
 
     # ---------------------------
-    # Q&A SECTION
+    # ASK QUESTION
     # ---------------------------
     st.header("💬 Ask from your notes")
     q = st.text_input("Enter your question")
@@ -108,21 +129,18 @@ if pdf:
 
     if st.button("Start Quiz"):
         questions = [
-            "What is a variable?",
-            "What is a loop?",
-            "What is a function?"
+            "What is the main concept from your notes?",
+            "Explain one important topic from your PDF.",
+            "What did you learn from the document?"
         ]
 
         score = 0
 
         for i, q in enumerate(questions):
-            ans = st.text_input(q, key=i)
+            ans = st.text_input(q, key=f"quiz_{i}")
+
             if ans:
-                if "variable" in q.lower() and "store" in ans.lower():
-                    score += 1
-                if "loop" in q.lower() and "repeat" in ans.lower():
-                    score += 1
-                if "function" in q.lower() and "block" in ans.lower():
+                if len(ans) > 10:
                     score += 1
 
         st.write("🎯 Score:", score, "/", len(questions))
